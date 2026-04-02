@@ -1,1269 +1,1410 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14'>📈</text></svg>">
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FINBOARD — Rynki w czasie rzeczywistym</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<style>
-  :root {
-    --bg: #0a0b0e;
-    --bg2: #111318;
-    --bg3: #181c23;
-    --border: rgba(255,255,255,0.07);
-    --border2: rgba(255,255,255,0.12);
-    --text: #e8eaf0;
-    --text-dim: #6b7280;
-    --text-muted: #374151;
-    --accent: #f0c040;
-    --accent2: #e8834a;
-    --green: #34d399;
-    --red: #f87171;
-    --blue: #60a5fa;
-    --purple: #a78bfa;
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    font-family: 'Syne', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  /* GRID NOISE TEXTURE */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-      linear-gradient(rgba(240,192,64,0.015) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(240,192,64,0.015) 1px, transparent 1px);
-    background-size: 40px 40px;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  /* HEADER */
-  header {
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    backdrop-filter: blur(20px);
-    background: rgba(10,11,14,0.85);
-    border-bottom: 1px solid var(--border);
-    padding: 0 2rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 60px;
-  }
-
-  .logo {
-    font-size: 1.2rem;
-    font-weight: 800;
-    letter-spacing: 0.15em;
-    color: var(--accent);
-    text-transform: uppercase;
-  }
-
-  .logo span {
-    color: var(--text-dim);
-    font-weight: 400;
-  }
-
-  .header-status {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--text-dim);
-  }
-
-  .pulse-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--green);
-    animation: pulse 2s infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.4; transform: scale(0.7); }
-  }
-
-  /* LAYOUT */
-  main {
-    position: relative;
-    z-index: 1;
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 2rem;
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 1.5rem;
-  }
-
-  /* TICKER BAR */
-  .ticker-strip {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
-    height: 44px;
-    display: flex;
-    align-items: center;
-  }
-
-  .ticker-label {
-    padding: 0 1rem;
-    font-size: 0.65rem;
-    letter-spacing: 0.12em;
-    color: var(--accent);
-    text-transform: uppercase;
-    font-weight: 700;
-    border-right: 1px solid var(--border);
-    height: 100%;
-    display: flex;
-    align-items: center;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .ticker-scroll {
-    display: flex;
-    gap: 2rem;
-    padding: 0 1.5rem;
-    overflow: hidden;
-    flex: 1;
-  }
-
-  .ticker-item {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    white-space: nowrap;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
-    cursor: pointer;
-    transition: opacity 0.2s;
-    flex-shrink: 0;
-  }
-
-  .ticker-item:hover { opacity: 0.7; }
-
-  .ticker-item .sym {
-    color: var(--text-dim);
-    font-size: 0.65rem;
-    letter-spacing: 0.08em;
-  }
-
-  .ticker-item .price { color: var(--text); font-weight: 500; }
-  .ticker-item .chg.up { color: var(--green); }
-  .ticker-item .chg.down { color: var(--red); }
-
-  /* MAIN GRID */
-  .dashboard-grid {
-    display: grid;
-    grid-template-columns: 300px 1fr;
-    gap: 1.5rem;
-  }
-
-  /* ASSET SELECTOR */
-  .asset-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .panel-title {
-    font-size: 0.65rem;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--text-dim);
-    font-weight: 600;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .asset-card {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1rem 1.2rem;
-    cursor: pointer;
-    transition: all 0.2s;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .asset-card::before {
-    content: '';
-    position: absolute;
-    left: 0; top: 0; bottom: 0;
-    width: 3px;
-    background: transparent;
-    transition: background 0.2s;
-  }
-
-  .asset-card:hover {
-    border-color: var(--border2);
-    background: var(--bg3);
-  }
-
-  .asset-card.active {
-    border-color: rgba(240,192,64,0.3);
-    background: rgba(240,192,64,0.04);
-  }
-
-  .asset-card.active::before { background: var(--accent); }
-
-  .asset-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 0.5rem;
-  }
-
-  .asset-name-row {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-
-  .asset-icon {
-    width: 30px; height: 30px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1rem;
-    flex-shrink: 0;
-  }
-
-  .asset-sym {
-    font-size: 0.85rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-  }
-
-  .asset-full {
-    font-size: 0.65rem;
-    color: var(--text-dim);
-    margin-top: 1px;
-  }
-
-  .asset-price-col {
-    text-align: right;
-  }
-
-  .asset-price {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.85rem;
-    font-weight: 500;
-  }
-
-  .asset-change {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    margin-top: 2px;
-  }
-
-  .up { color: var(--green); }
-  .down { color: var(--red); }
-
-  /* CHART PANEL */
-  .chart-panel {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1.2rem;
-    min-height: 500px;
-  }
-
-  .chart-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-  }
-
-  .chart-title-block {}
-
-  .chart-title {
-    font-size: 1.5rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-  }
-
-  .chart-subtitle {
-    font-size: 0.7rem;
-    color: var(--text-dim);
-    margin-top: 2px;
-    font-family: 'JetBrains Mono', monospace;
-    letter-spacing: 0.05em;
-  }
-
-  .chart-current-price {
-    text-align: right;
-  }
-
-  .chart-big-price {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 1.8rem;
-    font-weight: 500;
-    letter-spacing: -0.03em;
-  }
-
-  .chart-big-change {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.8rem;
-    margin-top: 3px;
-  }
-
-  .timeframe-row {
-    display: flex;
-    gap: 0.4rem;
-  }
-
-  .tf-btn {
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.3rem 0.7rem;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--text-dim);
-    cursor: pointer;
-    transition: all 0.15s;
-    letter-spacing: 0.05em;
-  }
-
-  .tf-btn:hover {
-    border-color: var(--border2);
-    color: var(--text);
-  }
-
-  .tf-btn.active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #000;
-    font-weight: 700;
-  }
-
-  .chart-wrap {
-    flex: 1;
-    position: relative;
-    min-height: 320px;
-  }
-
-  .chart-loading {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg2);
-    border-radius: 8px;
-    z-index: 5;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
-    color: var(--text-dim);
-    letter-spacing: 0.1em;
-  }
-
-  .spinner {
-    width: 20px; height: 20px;
-    border: 2px solid var(--border2);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    margin-right: 0.75rem;
-  }
-
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
-  /* STATS ROW */
-  .stats-row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 0.75rem;
-  }
-
-  .stat-box {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
-  }
-
-  .stat-label {
-    font-size: 0.6rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--text-dim);
-    margin-bottom: 0.4rem;
-  }
-
-  .stat-value {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: var(--text);
-  }
-
-  /* CALCULATOR */
-  .calc-panel {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.5rem;
-  }
-
-  .calc-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.5rem;
-    align-items: start;
-  }
-
-  .calc-title {
-    font-size: 0.65rem;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--text-dim);
-    font-weight: 600;
-    margin-bottom: 1.2rem;
-  }
-
-  .input-group {
-    margin-bottom: 1rem;
-  }
-
-  .input-label {
-    font-size: 0.65rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--text-dim);
-    margin-bottom: 0.5rem;
-    display: block;
-  }
-
-  .input-row {
-    display: flex;
-    align-items: stretch;
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
-    transition: border-color 0.2s;
-  }
-
-  .input-row:focus-within {
-    border-color: var(--accent);
-  }
-
-  .input-row input, .input-row select {
-    background: transparent;
-    border: none;
-    outline: none;
-    padding: 0.7rem 0.9rem;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.85rem;
-    color: var(--text);
-    flex: 1;
-    width: 100%;
-  }
-
-  .input-row select option {
-    background: var(--bg3);
-  }
-
-  .input-suffix {
-    padding: 0.7rem 0.9rem;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
-    color: var(--text-dim);
-    border-left: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    background: var(--bg2);
-    white-space: nowrap;
-  }
-
-  .convert-btn {
-    width: 100%;
-    background: var(--accent);
-    border: none;
-    border-radius: 8px;
-    padding: 0.8rem;
-    font-family: 'Syne', sans-serif;
-    font-size: 0.8rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: #000;
-    cursor: pointer;
-    transition: all 0.2s;
-    margin-top: 0.5rem;
-  }
-
-  .convert-btn:hover {
-    background: #f8d060;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 20px rgba(240,192,64,0.3);
-  }
-
-  /* RESULT */
-  .calc-result {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    min-height: 180px;
-  }
-
-  .result-label {
-    font-size: 0.65rem;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--text-dim);
-    margin-bottom: 1rem;
-  }
-
-  .result-main {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 2rem;
-    font-weight: 500;
-    color: var(--accent);
-    letter-spacing: -0.02em;
-    line-height: 1;
-    margin-bottom: 0.5rem;
-    word-break: break-all;
-  }
-
-  .result-sub {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
-    color: var(--text-dim);
-    margin-top: 0.5rem;
-  }
-
-  .result-rate {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 1rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--text-dim);
-  }
-
-  /* FOOTER */
-  footer {
-    position: relative;
-    z-index: 1;
-    text-align: center;
-    padding: 1.5rem 2rem;
-    font-size: 0.65rem;
-    color: var(--text-muted);
-    font-family: 'JetBrains Mono', monospace;
-    letter-spacing: 0.08em;
-    border-top: 1px solid var(--border);
-  }
-
-  /* ERROR */
-  .error-msg {
-    background: rgba(248,113,113,0.08);
-    border: 1px solid rgba(248,113,113,0.2);
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
-    font-size: 0.75rem;
-    color: var(--red);
-    font-family: 'JetBrains Mono', monospace;
-    display: none;
-  }
-
-  /* RESPONSIVE */
-  @media (max-width: 900px) {
-    .dashboard-grid {
-      grid-template-columns: 1fr;
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Marek Kowalski — Trener Personalny Premium</title>
+
+  <!-- Google Fonts: Bebas Neue (display) + Poppins (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ============================================================
+       CSS CUSTOM PROPERTIES
+    ============================================================ */
+    :root {
+      --black:   #0a0a0a;
+      --dark:    #111111;
+      --mid:     #1c1c1c;
+      --grey:    #2a2a2a;
+      --muted:   #888888;
+      --light:   #e0e0e0;
+      --white:   #ffffff;
+      --accent:  #c6f135;       /* neon lime-green */
+      --accent2: #a8d020;
+      --font-display: 'Bebas Neue', sans-serif;
+      --font-body:    'Poppins', sans-serif;
+      --radius: 4px;
+      --transition: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .asset-panel {
+
+    /* ============================================================
+       RESET & BASE
+    ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--black);
+      color: var(--light);
+      font-family: var(--font-body);
+      font-size: 16px;
+      line-height: 1.7;
+      overflow-x: hidden;
+    }
+    img { display: block; width: 100%; height: auto; }
+    a  { text-decoration: none; color: inherit; }
+    ul { list-style: none; }
+
+    /* ============================================================
+       UTILITY
+    ============================================================ */
+    .container { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+    .accent    { color: var(--accent); }
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 4px 12px;
+      border-radius: 2px;
+      margin-bottom: 18px;
+    }
+    .section-title {
+      font-family: var(--font-display);
+      font-size: clamp(2.4rem, 5vw, 4rem);
+      line-height: 1.05;
+      color: var(--white);
+      margin-bottom: 16px;
+    }
+    .section-sub {
+      font-size: 1rem;
+      color: var(--muted);
+      max-width: 540px;
+      margin-bottom: 48px;
+    }
+
+    /* CTA Button */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--accent);
+      color: var(--black);
+      font-family: var(--font-body);
+      font-weight: 700;
+      font-size: 0.9rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 16px 36px;
+      border: none;
+      cursor: pointer;
+      border-radius: var(--radius);
+      transition: var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+    .btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.12);
+      transform: translateX(-100%);
+      transition: transform 0.4s ease;
+    }
+    .btn:hover::after { transform: translateX(0); }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(198,241,53,0.35); }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--white);
+      border: 1.5px solid rgba(255,255,255,0.3);
+    }
+    .btn-outline:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 8px 24px rgba(198,241,53,0.2);
+    }
+    .btn-outline::after { display: none; }
+
+    /* ============================================================
+       SCROLL REVEAL ANIMATION
+    ============================================================ */
+    .reveal {
+      opacity: 0;
+      transform: translateY(36px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: none;
+    }
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.22s; }
+    .reveal-delay-3 { transition-delay: 0.34s; }
+    .reveal-delay-4 { transition-delay: 0.46s; }
+
+    /* ============================================================
+       NAVIGATION
+    ============================================================ */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      padding: 18px 0;
+      transition: background 0.4s, padding 0.4s;
+    }
+    nav.scrolled {
+      background: rgba(10,10,10,0.95);
+      backdrop-filter: blur(12px);
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-logo {
+      font-family: var(--font-display);
+      font-size: 1.8rem;
+      letter-spacing: 0.04em;
+      color: var(--white);
+    }
+    .nav-logo span { color: var(--accent); }
+    .nav-links {
+      display: flex;
+      gap: 36px;
+    }
+    .nav-links a {
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--white); }
+    .nav-cta { display: flex; align-items: center; gap: 12px; }
+
+    /* Hamburger */
+    .hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      cursor: pointer;
+      padding: 4px;
+    }
+    .hamburger span {
+      display: block;
+      width: 26px;
+      height: 2px;
+      background: var(--white);
+      transition: var(--transition);
+    }
+    .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .hamburger.open span:nth-child(2) { opacity: 0; }
+    .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+    /* Mobile menu */
+    .mobile-menu {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--dark);
+      z-index: 999;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 36px;
+    }
+    .mobile-menu.open { display: flex; }
+    .mobile-menu a {
+      font-family: var(--font-display);
+      font-size: 2.4rem;
+      letter-spacing: 0.06em;
+      color: var(--white);
+      transition: color 0.2s;
+    }
+    .mobile-menu a:hover { color: var(--accent); }
+
+    /* ============================================================
+       1. HERO
+    ============================================================ */
+    #hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+    }
+    .hero-bg {
+      position: absolute;
+      inset: 0;
+      background-image:
+        url('https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1800&q=85&auto=format&fit=crop'),
+        url('https://picsum.photos/seed/gym1/1800/1200');
+      background-size: cover;
+      background-position: center 30%;
+      filter: brightness(0.35);
+      transform: scale(1.04);
+      animation: heroZoom 12s ease-out forwards;
+    }
+    @keyframes heroZoom { to { transform: scale(1); } }
+
+    /* Noise texture overlay */
+    .hero-bg::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      opacity: 0.5;
+    }
+
+    /* Diagonal accent strip */
+    .hero-strip {
+      position: absolute;
+      bottom: -2px;
+      left: 0; right: 0;
+      height: 120px;
+      background: var(--black);
+      clip-path: polygon(0 60%, 100% 0, 100% 100%, 0 100%);
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      padding: 140px 0 100px;
+      max-width: 760px;
+    }
+    .hero-eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+      opacity: 0;
+      animation: fadeUp 0.8s 0.3s ease forwards;
+    }
+    .hero-eyebrow span {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .hero-eyebrow::before {
+      content: '';
+      display: block;
+      width: 40px; height: 1.5px;
+      background: var(--accent);
+    }
+    .hero-headline {
+      font-family: var(--font-display);
+      font-size: clamp(3.6rem, 8vw, 7.2rem);
+      line-height: 0.95;
+      color: var(--white);
+      letter-spacing: 0.01em;
+      opacity: 0;
+      animation: fadeUp 0.8s 0.5s ease forwards;
+    }
+    .hero-headline em {
+      color: var(--accent);
+      font-style: normal;
+      display: block;
+    }
+    .hero-sub {
+      font-size: 1.1rem;
+      color: rgba(255,255,255,0.65);
+      margin: 28px 0 40px;
+      max-width: 480px;
+      opacity: 0;
+      animation: fadeUp 0.8s 0.7s ease forwards;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      opacity: 0;
+      animation: fadeUp 0.8s 0.9s ease forwards;
+    }
+    .hero-stats {
+      position: absolute;
+      right: 0;
+      bottom: 180px;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      opacity: 0;
+      animation: fadeLeft 0.9s 1.1s ease forwards;
+    }
+    .stat-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+      backdrop-filter: blur(10px);
+      border-radius: var(--radius);
+      padding: 18px 28px;
+      text-align: center;
+    }
+    .stat-number {
+      font-family: var(--font-display);
+      font-size: 2.8rem;
+      color: var(--accent);
+      line-height: 1;
+    }
+    .stat-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    @keyframes fadeUp  { from { opacity:0; transform:translateY(30px); } to { opacity:1; transform:none; } }
+    @keyframes fadeLeft{ from { opacity:0; transform:translateX(30px); } to { opacity:1; transform:none; } }
+
+    /* ============================================================
+       2. O MNIE
+    ============================================================ */
+    #about {
+      padding: 120px 0;
+      background: var(--dark);
+      position: relative;
+    }
+    .about-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
     }
-    .asset-panel .panel-title { grid-column: 1/-1; }
-    .stats-row { grid-template-columns: repeat(2, 1fr); }
-    .calc-grid { grid-template-columns: 1fr; }
-  }
+    .about-img-wrap {
+      position: relative;
+    }
+    .about-img {
+      border-radius: var(--radius);
+      object-fit: cover;
+      height: 580px;
+      filter: grayscale(15%);
+      transition: filter 0.4s;
+    }
+    .about-img:hover { filter: grayscale(0%); }
+    .about-accent-box {
+      position: absolute;
+      bottom: -28px;
+      right: -28px;
+      background: var(--accent);
+      color: var(--black);
+      padding: 28px 32px;
+      border-radius: var(--radius);
+    }
+    .about-accent-box strong {
+      display: block;
+      font-family: var(--font-display);
+      font-size: 2.4rem;
+      line-height: 1;
+    }
+    .about-accent-box small {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .about-text .section-title { margin-bottom: 24px; }
+    .about-text p { color: var(--muted); margin-bottom: 16px; font-size: 0.95rem; }
+    .cert-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 32px;
+    }
+    .cert-badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      padding: 7px 16px;
+      border: 1px solid var(--grey);
+      border-radius: 2px;
+      color: var(--light);
+      transition: var(--transition);
+    }
+    .cert-badge:hover { border-color: var(--accent); color: var(--accent); }
 
-  @media (max-width: 600px) {
-    main { padding: 1rem; gap: 1rem; }
-    .asset-panel { grid-template-columns: 1fr; }
-    .stats-row { grid-template-columns: repeat(2, 1fr); }
-    .chart-big-price { font-size: 1.3rem; }
-    .chart-title { font-size: 1.1rem; }
-    header { padding: 0 1rem; }
-    .logo { font-size: 1rem; }
-  }
+    /* ============================================================
+       3. OFERTA
+    ============================================================ */
+    #offer {
+      padding: 120px 0;
+      background: var(--black);
+    }
+    .offer-header { text-align: center; }
+    .offer-header .section-sub { margin: 0 auto 56px; }
+    .offer-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+    }
+    .offer-card {
+      background: var(--mid);
+      padding: 48px 36px;
+      position: relative;
+      overflow: hidden;
+      transition: var(--transition);
+      cursor: default;
+    }
+    .offer-card::before {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0;
+      width: 100%; height: 3px;
+      background: var(--accent);
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 0.4s ease;
+    }
+    .offer-card:hover::before { transform: scaleX(1); }
+    .offer-card:hover { background: #1f1f1f; transform: translateY(-6px); }
+    .offer-icon {
+      width: 56px; height: 56px;
+      background: rgba(198,241,53,0.1);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 28px;
+      font-size: 1.4rem;
+    }
+    .offer-card h3 {
+      font-family: var(--font-display);
+      font-size: 1.8rem;
+      color: var(--white);
+      margin-bottom: 14px;
+      letter-spacing: 0.03em;
+    }
+    .offer-card p { color: var(--muted); font-size: 0.9rem; margin-bottom: 24px; }
+    .offer-features { display: flex; flex-direction: column; gap: 8px; }
+    .offer-features li {
+      font-size: 0.82rem;
+      color: var(--light);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .offer-features li::before {
+      content: '✓';
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
 
-  /* FADE IN */
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
+    /* ============================================================
+       4. METAMORFOZY
+    ============================================================ */
+    #results {
+      padding: 120px 0;
+      background: var(--dark);
+    }
+    .results-header { margin-bottom: 56px; }
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3px;
+    }
+    .result-card {
+      position: relative;
+      overflow: hidden;
+      aspect-ratio: 3/4;
+    }
+    .result-card img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transition: transform 0.6s ease, filter 0.4s;
+      filter: grayscale(20%) brightness(0.85);
+    }
+    .result-card:hover img { transform: scale(1.06); filter: grayscale(0%) brightness(1); }
+    .result-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 55%);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 28px;
+    }
+    .result-name {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      color: var(--white);
+      letter-spacing: 0.03em;
+    }
+    .result-stat {
+      font-size: 0.8rem;
+      color: var(--accent);
+      font-weight: 600;
+      letter-spacing: 0.1em;
+    }
 
-  .dashboard-grid, .calc-panel {
-    animation: fadeUp 0.4s ease both;
-  }
-  .dashboard-grid { animation-delay: 0.05s; }
-  .calc-panel { animation-delay: 0.1s; }
-</style>
+    /* ============================================================
+       5. OPINIE
+    ============================================================ */
+    #testimonials {
+      padding: 120px 0;
+      background: var(--black);
+    }
+    .testimonials-header { text-align: center; margin-bottom: 64px; }
+    .testimonials-header .section-sub { margin: 0 auto; }
+    .testimonials-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .testimonial-card {
+      background: var(--mid);
+      border: 1px solid var(--grey);
+      border-radius: var(--radius);
+      padding: 40px 32px;
+      position: relative;
+      transition: var(--transition);
+    }
+    .testimonial-card:hover {
+      border-color: rgba(198,241,53,0.3);
+      transform: translateY(-4px);
+      box-shadow: 0 20px 48px rgba(0,0,0,0.4);
+    }
+    .quote-mark {
+      font-family: var(--font-display);
+      font-size: 5rem;
+      color: var(--accent);
+      line-height: 0.6;
+      margin-bottom: 20px;
+      display: block;
+      opacity: 0.5;
+    }
+    .testimonial-text {
+      font-size: 0.93rem;
+      color: var(--light);
+      line-height: 1.8;
+      margin-bottom: 32px;
+    }
+    .testimonial-author {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .author-avatar {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--grey);
+    }
+    .author-name {
+      font-weight: 600;
+      color: var(--white);
+      font-size: 0.9rem;
+    }
+    .author-sub {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .stars {
+      display: flex;
+      gap: 3px;
+      margin-top: 6px;
+    }
+    .star { color: var(--accent); font-size: 0.85rem; }
+
+    /* ============================================================
+       6. CENNIK
+    ============================================================ */
+    #pricing {
+      padding: 120px 0;
+      background: var(--dark);
+    }
+    .pricing-header { text-align: center; margin-bottom: 64px; }
+    .pricing-header .section-sub { margin: 0 auto; }
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      align-items: start;
+    }
+    .price-card {
+      border: 1px solid var(--grey);
+      border-radius: var(--radius);
+      padding: 44px 36px;
+      transition: var(--transition);
+      position: relative;
+    }
+    .price-card:hover {
+      border-color: rgba(198,241,53,0.3);
+      box-shadow: 0 20px 48px rgba(0,0,0,0.4);
+    }
+    .price-card.popular {
+      background: var(--mid);
+      border-color: var(--accent);
+      transform: scale(1.04);
+      box-shadow: 0 0 0 1px var(--accent), 0 24px 64px rgba(198,241,53,0.12);
+    }
+    .popular-badge {
+      position: absolute;
+      top: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--accent);
+      color: var(--black);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 5px 16px;
+      border-radius: 2px;
+      white-space: nowrap;
+    }
+    .price-tier {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+    .price-amount {
+      font-family: var(--font-display);
+      font-size: 3.8rem;
+      color: var(--white);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .price-amount span {
+      font-family: var(--font-body);
+      font-size: 1.1rem;
+      font-weight: 400;
+      color: var(--muted);
+    }
+    .price-per {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 32px;
+    }
+    .price-divider {
+      width: 40px; height: 2px;
+      background: var(--accent);
+      margin-bottom: 28px;
+    }
+    .price-features {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 40px;
+    }
+    .price-features li {
+      font-size: 0.88rem;
+      color: var(--light);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .price-features li::before {
+      content: '→';
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .price-features li.inactive {
+      color: var(--grey);
+      text-decoration: line-through;
+    }
+    .price-features li.inactive::before { color: var(--grey); }
+
+    /* ============================================================
+       7. KONTAKT
+    ============================================================ */
+    #contact {
+      padding: 120px 0;
+      background: var(--black);
+      position: relative;
+      overflow: hidden;
+    }
+    /* Big decorative text */
+    #contact::before {
+      content: 'START';
+      position: absolute;
+      right: -40px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-family: var(--font-display);
+      font-size: 22vw;
+      color: rgba(255,255,255,0.015);
+      pointer-events: none;
+      white-space: nowrap;
+      line-height: 1;
+    }
+    .contact-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+    }
+    .contact-info .section-title { margin-bottom: 24px; }
+    .contact-info p { color: var(--muted); margin-bottom: 40px; font-size: 0.95rem; }
+    .contact-details { display: flex; flex-direction: column; gap: 20px; }
+    .contact-detail {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .contact-detail-icon {
+      width: 44px; height: 44px;
+      background: var(--mid);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .contact-detail-text strong {
+      display: block;
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .contact-detail-text span {
+      color: var(--white);
+      font-weight: 500;
+    }
+
+    /* Form */
+    .contact-form { display: flex; flex-direction: column; gap: 18px; }
+    .form-group { display: flex; flex-direction: column; gap: 8px; }
+    .form-group label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .form-group input,
+    .form-group textarea {
+      background: var(--mid);
+      border: 1px solid var(--grey);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      color: var(--white);
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.25s;
+      resize: none;
+    }
+    .form-group input:focus,
+    .form-group textarea:focus {
+      border-color: var(--accent);
+    }
+    .form-group input::placeholder,
+    .form-group textarea::placeholder { color: var(--grey); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+
+    /* ============================================================
+       FOOTER
+    ============================================================ */
+    footer {
+      background: var(--dark);
+      border-top: 1px solid var(--grey);
+      padding: 48px 0;
+    }
+    .footer-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 24px;
+    }
+    .footer-logo {
+      font-family: var(--font-display);
+      font-size: 1.6rem;
+      color: var(--white);
+    }
+    .footer-logo span { color: var(--accent); }
+    .footer-copy { font-size: 0.8rem; color: var(--muted); }
+    .footer-links {
+      display: flex;
+      gap: 28px;
+    }
+    .footer-links a {
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--accent); }
+
+    /* ============================================================
+       RESPONSIVE
+    ============================================================ */
+    @media (max-width: 1024px) {
+      .about-grid { grid-template-columns: 1fr; gap: 48px; }
+      .about-img { height: 420px; }
+      .hero-stats { display: none; }
+      .results-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 768px) {
+      .nav-links, .nav-cta { display: none; }
+      .hamburger { display: flex; }
+      .offer-grid { grid-template-columns: 1fr; }
+      .testimonials-grid { grid-template-columns: 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; }
+      .price-card.popular { transform: none; }
+      .contact-grid { grid-template-columns: 1fr; gap: 48px; }
+      .form-row { grid-template-columns: 1fr; }
+      .results-grid { grid-template-columns: 1fr; }
+      .hero-headline { font-size: clamp(2.8rem, 12vw, 5rem); }
+    }
+  </style>
 </head>
 <body>
 
-<header>
-  <div class="logo">FIN<span>BOARD</span></div>
-  <div class="header-status">
-    <div class="pulse-dot"></div>
-    <span id="last-update">ładowanie...</span>
+  <!-- ============================================================
+       NAVIGATION
+  ============================================================ -->
+  <nav id="navbar">
+    <div class="container nav-inner">
+      <a href="#hero" class="nav-logo">MAREK<span>.</span>PRO</a>
+
+      <ul class="nav-links">
+        <li><a href="#about">O mnie</a></li>
+        <li><a href="#offer">Oferta</a></li>
+        <li><a href="#results">Wyniki</a></li>
+        <li><a href="#testimonials">Opinie</a></li>
+        <li><a href="#pricing">Cennik</a></li>
+      </ul>
+
+      <div class="nav-cta">
+        <a href="#contact" class="btn" style="padding:12px 24px;font-size:0.8rem;">Umów trening</a>
+      </div>
+
+      <button class="hamburger" id="hamburger" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Mobile menu -->
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="#about"        onclick="closeMobile()">O mnie</a>
+    <a href="#offer"        onclick="closeMobile()">Oferta</a>
+    <a href="#results"      onclick="closeMobile()">Wyniki</a>
+    <a href="#testimonials" onclick="closeMobile()">Opinie</a>
+    <a href="#pricing"      onclick="closeMobile()">Cennik</a>
+    <a href="#contact"      onclick="closeMobile()">Kontakt</a>
   </div>
-</header>
 
-<main>
+  <!-- ============================================================
+       1. HERO
+  ============================================================ -->
+  <section id="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-strip"></div>
 
-  <!-- TICKER -->
-  <div class="ticker-strip">
-    <div class="ticker-label">▶ Live</div>
-    <div class="ticker-scroll" id="ticker-scroll"></div>
-  </div>
+    <div class="container" style="position:relative;z-index:2;width:100%;">
+      <div class="hero-content">
+        <div class="hero-eyebrow">
+          <span>Certyfikowany Trener Personalny</span>
+        </div>
 
-  <!-- MAIN DASHBOARD -->
-  <div class="dashboard-grid">
+        <h1 class="hero-headline">
+          Zbuduj<br>
+          <em>formę życia</em>
+        </h1>
 
-    <!-- ASSET LIST -->
-    <div class="asset-panel">
-      <div class="panel-title">Aktywa</div>
-      <div class="asset-card active" data-id="bitcoin" onclick="selectAsset('bitcoin')">
-        <div class="asset-header">
-          <div class="asset-name-row">
-            <div class="asset-icon" style="background:rgba(247,147,26,0.15)">₿</div>
-            <div>
-              <div class="asset-sym">BTC</div>
-              <div class="asset-full">Bitcoin</div>
-            </div>
-          </div>
-          <div class="asset-price-col">
-            <div class="asset-price" id="card-price-bitcoin">—</div>
-            <div class="asset-change" id="card-change-bitcoin">—</div>
-          </div>
+        <p class="hero-sub">
+          Przestań szukać motywacji — zacznij budować nawyki, które zmieniają
+          ciało i umysł. Profesjonalne podejście, realne rezultaty.
+        </p>
+
+        <div class="hero-actions">
+          <a href="#contact" class="btn">
+            Zacznij teraz
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          <a href="#results" class="btn btn-outline">Zobacz efekty</a>
         </div>
       </div>
-      <div class="asset-card" data-id="ethereum" onclick="selectAsset('ethereum')">
-        <div class="asset-header">
-          <div class="asset-name-row">
-            <div class="asset-icon" style="background:rgba(96,165,250,0.12)">Ξ</div>
-            <div>
-              <div class="asset-sym">ETH</div>
-              <div class="asset-full">Ethereum</div>
-            </div>
-          </div>
-          <div class="asset-price-col">
-            <div class="asset-price" id="card-price-ethereum">—</div>
-            <div class="asset-change" id="card-change-ethereum">—</div>
-          </div>
+
+      <!-- Stats panel (desktop) -->
+      <div class="hero-stats">
+        <div class="stat-card">
+          <div class="stat-number">200+</div>
+          <div class="stat-label">Zadowolonych klientów</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">8</div>
+          <div class="stat-label">Lat doświadczenia</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">98%</div>
+          <div class="stat-label">Skuteczność</div>
         </div>
       </div>
-      <div class="asset-card" data-id="gold" onclick="selectAsset('gold')">
-        <div class="asset-header">
-          <div class="asset-name-row">
-            <div class="asset-icon" style="background:rgba(240,192,64,0.12)">Au</div>
-            <div>
-              <div class="asset-sym">XAU</div>
-              <div class="asset-full">Złoto (oz)</div>
-            </div>
-          </div>
-          <div class="asset-price-col">
-            <div class="asset-price" id="card-price-gold">—</div>
-            <div class="asset-change" id="card-change-gold">—</div>
-          </div>
-        </div>
-      </div>
-      <div class="asset-card" data-id="silver" onclick="selectAsset('silver')">
-        <div class="asset-header">
-          <div class="asset-name-row">
-            <div class="asset-icon" style="background:rgba(148,163,184,0.12)">Ag</div>
-            <div>
-              <div class="asset-sym">XAG</div>
-              <div class="asset-full">Srebro (oz)</div>
-            </div>
-          </div>
-          <div class="asset-price-col">
-            <div class="asset-price" id="card-price-silver">—</div>
-            <div class="asset-change" id="card-change-silver">—</div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       2. O MNIE
+  ============================================================ -->
+  <section id="about">
+    <div class="container">
+      <div class="about-grid">
+
+        <div class="about-img-wrap reveal">
+          <img
+            class="about-img"
+            src="https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=800&q=85&auto=format&fit=crop"
+            alt="Marek Kowalski — trener personalny"
+          />
+          <div class="about-accent-box">
+            <strong>8+</strong>
+            <small>Lat w branży</small>
           </div>
         </div>
-      </div>
-      <div class="asset-card" data-id="oil" onclick="selectAsset('oil')">
-        <div class="asset-header">
-          <div class="asset-name-row">
-            <div class="asset-icon" style="background:rgba(232,131,74,0.12)">🛢</div>
-            <div>
-              <div class="asset-sym">WTI</div>
-              <div class="asset-full">Ropa naftowa</div>
-            </div>
+
+        <div class="about-text">
+          <span class="tag reveal">O mnie</span>
+          <h2 class="section-title reveal reveal-delay-1">
+            Trening to nauka.<br>Wyniki to nauka.
+          </h2>
+          <p class="reveal reveal-delay-2">
+            Jestem <strong>Marek Kowalski</strong> — certyfikowany trener personalny i dietetyk sportowy z Warszawy. 
+            Od ponad 8 lat pomagam klientom osiągać cele, które sami uznawali za nierealne.
+          </p>
+          <p class="reveal reveal-delay-2">
+            Moja metoda łączy naukę o fizjologii, psychologię zmiany nawyków i precyzyjnie zaplanowany 
+            trening siłowy. Nie ma tutaj miejsca na przypadek — każda sesja ma cel.
+          </p>
+          <p class="reveal reveal-delay-2">
+            Pracowałem z zawodowymi sportowcami, osobami po kontuzjach, jak i zupełnymi początkującymi. 
+            Każdy klient dostaje indywidualny plan — bo nie ma jednej drogi do formy.
+          </p>
+
+          <div class="cert-list reveal reveal-delay-3">
+            <span class="cert-badge">NASM-CPT</span>
+            <span class="cert-badge">Dietetyka sportowa</span>
+            <span class="cert-badge">FMS Lv.2</span>
+            <span class="cert-badge">Kettlebell Instructor</span>
+            <span class="cert-badge">Mental coaching</span>
           </div>
-          <div class="asset-price-col">
-            <div class="asset-price" id="card-price-oil">—</div>
-            <div class="asset-change" id="card-change-oil">—</div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       3. OFERTA
+  ============================================================ -->
+  <section id="offer">
+    <div class="container">
+      <div class="offer-header">
+        <span class="tag reveal">Oferta</span>
+        <h2 class="section-title reveal reveal-delay-1">Co mogę dla Ciebie<br>zrobić?</h2>
+        <p class="section-sub reveal reveal-delay-2">
+          Każda usługa jest skrojona pod Twoje cele, harmonogram i możliwości. 
+          Zero schematów — tylko to, co działa.
+        </p>
+      </div>
+
+      <div class="offer-grid">
+        <!-- Card 1 -->
+        <div class="offer-card reveal">
+          <div class="offer-icon">💪</div>
+          <h3>Trening<br>Personalny</h3>
+          <p>Treningi 1:1 w Warszawie. Pełna kontrola nad każdą powtórzeniem, korekta techniki w czasie rzeczywistym.</p>
+          <ul class="offer-features">
+            <li>Indywidualny plan treningowy</li>
+            <li>Korekta techniki na bieżąco</li>
+            <li>Monitoring postępów</li>
+            <li>Dostęp do premium siłowni</li>
+          </ul>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="offer-card reveal reveal-delay-1">
+          <div class="offer-icon">📱</div>
+          <h3>Trening<br>Online</h3>
+          <p>Pełne wsparcie bez wychodzenia z domu. Ćwicz kiedy chcesz — ja czuwam nad Twoimi postępami.</p>
+          <ul class="offer-features">
+            <li>Plan na 30/60/90 dni</li>
+            <li>Cotygodniowe check-iny video</li>
+            <li>Aplikacja do śledzenia</li>
+            <li>Dostępny 7 dni w tygodniu</li>
+          </ul>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="offer-card reveal reveal-delay-2">
+          <div class="offer-icon">🥗</div>
+          <h3>Plany<br>Dietetyczne</h3>
+          <p>Żywienie dopasowane do Twoich celów, trybu życia i preferencji — bez głodzenia, bez magii.</p>
+          <ul class="offer-features">
+            <li>Analiza składu ciała</li>
+            <li>Jadłospis tygodniowy</li>
+            <li>Lista zakupów</li>
+            <li>Konsultacje miesięczne</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       4. METAMORFOZY / WYNIKI
+  ============================================================ -->
+  <section id="results">
+    <div class="container">
+      <div class="results-header">
+        <span class="tag reveal">Transformacje</span>
+        <h2 class="section-title reveal reveal-delay-1">
+          Realne wyniki,<br>realni ludzie
+        </h2>
+        <p class="section-sub reveal reveal-delay-2">
+          Ponad 200 przeprowadzonych transformacji. Każda historia jest inna — każda jest prawdziwa.
+        </p>
+      </div>
+
+      <div class="results-grid">
+        <div class="result-card reveal">
+          <img
+            src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=600&q=80&auto=format&fit=crop"
+            alt="Transformacja — Piotr"
+          />
+          <div class="result-overlay">
+            <div class="result-name">Piotr, 34 l.</div>
+            <div class="result-stat">-18 kg · 5 miesięcy</div>
+          </div>
+        </div>
+
+        <div class="result-card reveal reveal-delay-1">
+          <img
+            src="https://images.unsplash.com/photo-1549060279-7e168fcee0c2?w=600&q=80&auto=format&fit=crop"
+            alt="Transformacja — Kasia"
+          />
+          <div class="result-overlay">
+            <div class="result-name">Kasia, 28 l.</div>
+            <div class="result-stat">+12 kg mięśni · 8 miesięcy</div>
+          </div>
+        </div>
+
+        <div class="result-card reveal reveal-delay-2">
+          <img
+            src="https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=600&q=80&auto=format&fit=crop"
+            alt="Transformacja — Marcin"
+          />
+          <div class="result-overlay">
+            <div class="result-name">Marcin, 41 l.</div>
+            <div class="result-stat">-24 kg · 9 miesięcy</div>
           </div>
         </div>
       </div>
     </div>
+  </section>
 
-    <!-- CHART AREA -->
-    <div class="chart-panel">
-      <div class="chart-header">
-        <div class="chart-title-block">
-          <div class="chart-title" id="chart-title">Bitcoin</div>
-          <div class="chart-subtitle" id="chart-subtitle">BTC / USD</div>
-        </div>
-        <div class="chart-current-price">
-          <div class="chart-big-price" id="chart-price">—</div>
-          <div class="chart-big-change" id="chart-change">—</div>
-        </div>
+  <!-- ============================================================
+       5. OPINIE
+  ============================================================ -->
+  <section id="testimonials">
+    <div class="container">
+      <div class="testimonials-header">
+        <span class="tag reveal">Opinie</span>
+        <h2 class="section-title reveal reveal-delay-1">Co mówią klienci?</h2>
+        <p class="section-sub reveal reveal-delay-2">
+          Nie musisz mi wierzyć na słowo — posłuchaj osób, które już przeszły przez ten proces.
+        </p>
       </div>
-      <div class="timeframe-row">
-        <button class="tf-btn" onclick="setTf(1)">1D</button>
-        <button class="tf-btn active" onclick="setTf(7)">7D</button>
-        <button class="tf-btn" onclick="setTf(30)">1M</button>
-        <button class="tf-btn" onclick="setTf(90)">3M</button>
-        <button class="tf-btn" onclick="setTf(365)">1Y</button>
-      </div>
-      <div class="chart-wrap">
-        <div class="chart-loading" id="chart-loading">
-          <div class="spinner"></div> ŁADOWANIE DANYCH
+
+      <div class="testimonials-grid">
+        <!-- Testimonial 1 -->
+        <div class="testimonial-card reveal">
+          <span class="quote-mark">"</span>
+          <p class="testimonial-text">
+            Z Markiem schudłam 16 kg w 6 miesięcy, ale najważniejsze, że w końcu rozumiem jak działa moje ciało. 
+            Nie dietuję — żyję zdrowo. To największa zmiana.
+          </p>
+          <div class="testimonial-author">
+            <img
+              class="author-avatar"
+              src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&q=80&auto=format&fit=crop&crop=face"
+              alt="Anna W."
+            />
+            <div>
+              <div class="author-name">Anna W.</div>
+              <div class="author-sub">Klientka od 2 lat</div>
+              <div class="stars">
+                <span class="star">★</span><span class="star">★</span><span class="star">★</span>
+                <span class="star">★</span><span class="star">★</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <canvas id="priceChart"></canvas>
-      </div>
-      <div class="stats-row">
-        <div class="stat-box">
-          <div class="stat-label">7D Min</div>
-          <div class="stat-value" id="stat-low">—</div>
+
+        <!-- Testimonial 2 -->
+        <div class="testimonial-card reveal reveal-delay-1">
+          <span class="quote-mark">"</span>
+          <p class="testimonial-text">
+            Przyszedłem po kontuzji kręgosłupa. Marek nie tylko pomógł mi wrócić do formy — 
+            dziś jestem silniejszy niż przed kontuzją. Profesjonalizm na najwyższym poziomie.
+          </p>
+          <div class="testimonial-author">
+            <img
+              class="author-avatar"
+              src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&q=80&auto=format&fit=crop&crop=face"
+              alt="Tomek B."
+            />
+            <div>
+              <div class="author-name">Tomek B.</div>
+              <div class="author-sub">Klient od 1.5 roku</div>
+              <div class="stars">
+                <span class="star">★</span><span class="star">★</span><span class="star">★</span>
+                <span class="star">★</span><span class="star">★</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="stat-box">
-          <div class="stat-label">7D Max</div>
-          <div class="stat-value" id="stat-high">—</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-label">Zmiana 24h</div>
-          <div class="stat-value" id="stat-24h">—</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-label">Źródło</div>
-          <div class="stat-value" id="stat-source" style="font-size:0.7rem">—</div>
+
+        <!-- Testimonial 3 -->
+        <div class="testimonial-card reveal reveal-delay-2">
+          <span class="quote-mark">"</span>
+          <p class="testimonial-text">
+            Program online to strzał w dziesiątkę dla kogoś z napiętym grafikiem. 
+            Mam plan, wsparcie i wyniki — wszystko bez wychodzenia z domu. Polecam każdemu.
+          </p>
+          <div class="testimonial-author">
+            <img
+              class="author-avatar"
+              src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=120&q=80&auto=format&fit=crop&crop=face"
+              alt="Marta K."
+            />
+            <div>
+              <div class="author-name">Marta K.</div>
+              <div class="author-sub">Klientka online — 10 mies.</div>
+              <div class="stars">
+                <span class="star">★</span><span class="star">★</span><span class="star">★</span>
+                <span class="star">★</span><span class="star">★</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
+  </section>
 
-  </div>
-
-  <!-- CALCULATOR -->
-  <div class="calc-panel">
-    <div class="panel-title">Kalkulator przeliczeniowy</div>
-    <div class="calc-grid">
-      <div>
-        <div class="input-group">
-          <label class="input-label">Aktywo</label>
-          <div class="input-row">
-            <select id="calc-asset">
-              <option value="bitcoin">Bitcoin (BTC)</option>
-              <option value="ethereum">Ethereum (ETH)</option>
-              <option value="gold">Złoto (XAU/oz)</option>
-              <option value="silver">Srebro (XAG/oz)</option>
-              <option value="oil">Ropa WTI (bbl)</option>
-            </select>
-          </div>
-        </div>
-        <div class="input-group">
-          <label class="input-label">Ilość</label>
-          <div class="input-row">
-            <input type="number" id="calc-amount" value="1" min="0" step="any" placeholder="0.00">
-            <div class="input-suffix" id="calc-unit">BTC</div>
-          </div>
-        </div>
-        <div class="input-group">
-          <label class="input-label">Waluta docelowa</label>
-          <div class="input-row">
-            <select id="calc-currency">
-              <option value="usd">USD — Dolar amerykański</option>
-              <option value="eur">EUR — Euro</option>
-              <option value="pln">PLN — Polski złoty</option>
-            </select>
-          </div>
-        </div>
-        <button class="convert-btn" onclick="calculate()">Przelicz →</button>
-        <div class="error-msg" id="calc-error">Brak danych cenowych. Odśwież stronę.</div>
+  <!-- ============================================================
+       6. CENNIK
+  ============================================================ -->
+  <section id="pricing">
+    <div class="container">
+      <div class="pricing-header">
+        <span class="tag reveal">Cennik</span>
+        <h2 class="section-title reveal reveal-delay-1">Wybierz swój pakiet</h2>
+        <p class="section-sub reveal reveal-delay-2">
+          Inwestycja w zdrowie to najlepszy zwrot. Wszystkie pakiety zawierają 
+          konsultację wstępną bezpłatnie.
+        </p>
       </div>
-      <div class="calc-result" id="calc-result">
-        <div class="result-label">Wynik</div>
-        <div class="result-main" id="result-value">—</div>
-        <div class="result-sub" id="result-sub">Wpisz ilość i kliknij Przelicz</div>
-        <div class="result-rate" id="result-rate"></div>
+
+      <div class="pricing-grid">
+        <!-- Basic -->
+        <div class="price-card reveal">
+          <div class="price-tier">Basic</div>
+          <div class="price-amount">299 <span>zł/mies.</span></div>
+          <div class="price-per">Pakiet miesięczny</div>
+          <div class="price-divider"></div>
+          <ul class="price-features">
+            <li>Plan treningowy online</li>
+            <li>1 konsultacja miesięcznie</li>
+            <li>Dostęp do aplikacji</li>
+            <li class="inactive">Plan dietetyczny</li>
+            <li class="inactive">Sesje video 1:1</li>
+            <li class="inactive">Wsparcie 24/7</li>
+          </ul>
+          <a href="#contact" class="btn btn-outline" style="width:100%;justify-content:center;">Wybierz Basic</a>
+        </div>
+
+        <!-- Standard (popular) -->
+        <div class="price-card popular reveal reveal-delay-1">
+          <div class="popular-badge">Najpopularniejszy</div>
+          <div class="price-tier">Standard</div>
+          <div class="price-amount">599 <span>zł/mies.</span></div>
+          <div class="price-per">Pakiet miesięczny</div>
+          <div class="price-divider"></div>
+          <ul class="price-features">
+            <li>Plan treningowy online</li>
+            <li>4 konsultacje miesięcznie</li>
+            <li>Dostęp do aplikacji</li>
+            <li>Plan dietetyczny</li>
+            <li>Sesje video 1:1</li>
+            <li class="inactive">Wsparcie 24/7</li>
+          </ul>
+          <a href="#contact" class="btn" style="width:100%;justify-content:center;">Wybierz Standard</a>
+        </div>
+
+        <!-- Premium -->
+        <div class="price-card reveal reveal-delay-2">
+          <div class="price-tier">Premium</div>
+          <div class="price-amount">1199 <span>zł/mies.</span></div>
+          <div class="price-per">Pakiet miesięczny</div>
+          <div class="price-divider"></div>
+          <ul class="price-features">
+            <li>8 treningów osobistych</li>
+            <li>Nieograniczone konsultacje</li>
+            <li>Dostęp do aplikacji</li>
+            <li>Plan dietetyczny + jadłospisy</li>
+            <li>Sesje video 1:1</li>
+            <li>Wsparcie 24/7 na WhatsApp</li>
+          </ul>
+          <a href="#contact" class="btn btn-outline" style="width:100%;justify-content:center;">Wybierz Premium</a>
+        </div>
       </div>
     </div>
-  </div>
+  </section>
 
-</main>
+  <!-- ============================================================
+       7. KONTAKT
+  ============================================================ -->
+  <section id="contact">
+    <div class="container">
+      <div class="contact-grid">
 
-<footer>
-  Dane kryptowalut: CoinGecko API · Metale i ropa: Frankfurter + dane szacunkowe · Kursy walut: Frankfurter API
-  · Automatyczne odświeżanie co 60 sekund
-</footer>
+        <div class="contact-info">
+          <span class="tag reveal">Kontakt</span>
+          <h2 class="section-title reveal reveal-delay-1">
+            Umów pierwszy<br>
+            <span class="accent">bezpłatny trening</span>
+          </h2>
+          <p class="reveal reveal-delay-2">
+            Pierwsze spotkanie jest bezpłatne. Bez zobowiązań — chcę najpierw 
+            poznać Twoje cele i sprawdzić, czy mam dla Ciebie odpowiedź.
+          </p>
 
-<script>
-// ─────────────────────────────────────────────
-//  STATE
-// ─────────────────────────────────────────────
-const ASSETS = {
-  bitcoin:  { name: 'Bitcoin',   sym: 'BTC',  unit: 'BTC',  type: 'crypto', cgId: 'bitcoin' },
-  ethereum: { name: 'Ethereum',  sym: 'ETH',  unit: 'ETH',  type: 'crypto', cgId: 'ethereum' },
-  gold:     { name: 'Złoto',     sym: 'XAU',  unit: 'oz',   type: 'commodity' },
-  silver:   { name: 'Srebro',    sym: 'XAG',  unit: 'oz',   type: 'commodity' },
-  oil:      { name: 'Ropa WTI',  sym: 'WTI',  unit: 'bbl',  type: 'commodity' },
-};
+          <div class="contact-details reveal reveal-delay-3">
+            <div class="contact-detail">
+              <div class="contact-detail-icon">📍</div>
+              <div class="contact-detail-text">
+                <strong>Lokalizacja</strong>
+                <span>Warszawa, Mokotów</span>
+              </div>
+            </div>
+            <div class="contact-detail">
+              <div class="contact-detail-icon">📞</div>
+              <div class="contact-detail-text">
+                <strong>Telefon</strong>
+                <span>+48 600 123 456</span>
+              </div>
+            </div>
+            <div class="contact-detail">
+              <div class="contact-detail-icon">✉️</div>
+              <div class="contact-detail-text">
+                <strong>Email</strong>
+                <span>marek@marekpro.pl</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
-let currentAsset = 'bitcoin';
-let currentTf = 7;
-let priceChart = null;
-let prices = {};
-let fxRates = { usd: 1, eur: null, pln: null };
+        <div class="reveal reveal-delay-2">
+          <form class="contact-form" onsubmit="handleSubmit(event)">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="name">Imię i nazwisko</label>
+                <input type="text" id="name" placeholder="Jan Kowalski" required />
+              </div>
+              <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" placeholder="jan@email.com" required />
+              </div>
+            </div>
 
-// ─────────────────────────────────────────────
-//  CHART SETUP
-// ─────────────────────────────────────────────
-const ctx = document.getElementById('priceChart').getContext('2d');
+            <div class="form-group">
+              <label for="phone">Telefon (opcjonalnie)</label>
+              <input type="tel" id="phone" placeholder="+48 600 000 000" />
+            </div>
 
-function buildGradient(color) {
-  const grad = ctx.createLinearGradient(0, 0, 0, 320);
-  grad.addColorStop(0, color + '33');
-  grad.addColorStop(1, color + '00');
-  return grad;
-}
+            <div class="form-group">
+              <label for="goal">Twój główny cel</label>
+              <input type="text" id="goal" placeholder="np. schudnięcie, budowa masy, powrót po kontuzji" />
+            </div>
 
-function initChart(labels, data, color = '#f0c040') {
-  if (priceChart) { priceChart.destroy(); }
-  priceChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        data,
-        borderColor: color,
-        borderWidth: 2,
-        backgroundColor: buildGradient(color),
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0,
-        pointHoverRadius: 5,
-        pointHoverBackgroundColor: color,
-        pointHoverBorderColor: '#fff',
-        pointHoverBorderWidth: 2,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#181c23',
-          borderColor: 'rgba(255,255,255,0.1)',
-          borderWidth: 1,
-          titleColor: '#6b7280',
-          bodyColor: '#e8eaf0',
-          titleFont: { family: 'JetBrains Mono', size: 11 },
-          bodyFont: { family: 'JetBrains Mono', size: 13, weight: '500' },
-          padding: 12,
-          callbacks: {
-            label: ctx => ' ' + formatPrice(ctx.raw, 'usd'),
-          }
-        }
-      },
-      scales: {
-        x: {
-          grid: { color: 'rgba(255,255,255,0.04)', drawTicks: false },
-          ticks: {
-            color: '#6b7280',
-            font: { family: 'JetBrains Mono', size: 10 },
-            maxTicksLimit: 7,
-            maxRotation: 0,
-          },
-          border: { display: false },
-        },
-        y: {
-          position: 'right',
-          grid: { color: 'rgba(255,255,255,0.04)', drawTicks: false },
-          ticks: {
-            color: '#6b7280',
-            font: { family: 'JetBrains Mono', size: 10 },
-            maxTicksLimit: 6,
-            callback: v => formatPriceShort(v),
-          },
-          border: { display: false },
-        }
-      }
-    }
-  });
-}
+            <div class="form-group">
+              <label for="message">Wiadomość</label>
+              <textarea id="message" rows="5" placeholder="Opowiedz mi chwilę o sobie — ile ćwiczysz, jakie masz doświadczenie, gdzie jesteś teraz..."></textarea>
+            </div>
 
-// ─────────────────────────────────────────────
-//  HELPERS
-// ─────────────────────────────────────────────
-function formatPrice(v, currency = 'usd') {
-  if (v == null) return '—';
-  const sym = { usd: '$', eur: '€', pln: 'zł' }[currency] || '$';
-  const suffix = currency === 'pln' ? ' ' + sym : sym;
-  const prefix = currency === 'pln' ? '' : sym;
-  if (v >= 1000) return prefix + v.toLocaleString('pl-PL', { maximumFractionDigits: 2 }) + (currency === 'pln' ? ' zł' : '');
-  return prefix + v.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) + (currency === 'pln' ? ' zł' : '');
-}
+            <button type="submit" class="btn" style="align-self:flex-start;">
+              Umów pierwszy trening
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
 
-function formatPriceShort(v) {
-  if (v >= 1e9) return '$' + (v / 1e9).toFixed(1) + 'B';
-  if (v >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
-  if (v >= 1000) return '$' + (v / 1000).toFixed(1) + 'K';
-  if (v >= 1)    return '$' + v.toFixed(2);
-  return '$' + v.toFixed(4);
-}
+            <p id="form-success" style="display:none;color:var(--accent);font-size:0.9rem;margin-top:8px;">
+              ✓ Wiadomość wysłana! Odezwę się w ciągu 24h.
+            </p>
+          </form>
+        </div>
 
-function assetColor(id) {
-  return {
-    bitcoin: '#f7931a', ethereum: '#60a5fa',
-    gold: '#f0c040', silver: '#94a3b8', oil: '#e8834a'
-  }[id] || '#f0c040';
-}
+      </div>
+    </div>
+  </section>
 
-function setLastUpdate() {
-  const now = new Date();
-  document.getElementById('last-update').textContent =
-    'Aktualizacja: ' + now.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
+  <!-- ============================================================
+       FOOTER
+  ============================================================ -->
+  <footer>
+    <div class="container footer-inner">
+      <div class="footer-logo">MAREK<span>.</span>PRO</div>
+      <p class="footer-copy">© 2025 Marek Kowalski. Wszelkie prawa zastrzeżone.</p>
+      <nav class="footer-links">
+        <a href="#about">O mnie</a>
+        <a href="#offer">Oferta</a>
+        <a href="#pricing">Cennik</a>
+        <a href="#contact">Kontakt</a>
+      </nav>
+    </div>
+  </footer>
 
-// ─────────────────────────────────────────────
-//  FX RATES
-// ─────────────────────────────────────────────
-async function fetchFx() {
-  try {
-    const r = await fetch('https://api.frankfurter.app/latest?base=USD&symbols=EUR,PLN');
-    if (!r.ok) throw new Error();
-    const d = await r.json();
-    fxRates.eur = d.rates.EUR;
-    fxRates.pln = d.rates.PLN;
-  } catch {
-    // fallback rates
-    fxRates.eur = 0.92;
-    fxRates.pln = 3.97;
-  }
-}
-
-// ─────────────────────────────────────────────
-//  CRYPTO PRICES
-// ─────────────────────────────────────────────
-async function fetchCryptoPrices() {
-  try {
-    const r = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true'
-    );
-    if (!r.ok) throw new Error('CoinGecko ' + r.status);
-    const d = await r.json();
-    if (d.bitcoin) {
-      prices.bitcoin = { price: d.bitcoin.usd, change24h: d.bitcoin.usd_24h_change };
-    }
-    if (d.ethereum) {
-      prices.ethereum = { price: d.ethereum.usd, change24h: d.ethereum.usd_24h_change };
-    }
-  } catch (e) {
-    console.warn('CoinGecko error, using fallback', e);
-    // Generate realistic-ish fallback prices based on a seed
-    if (!prices.bitcoin) prices.bitcoin = { price: 85000 + Math.random() * 5000, change24h: (Math.random()-0.5)*4 };
-    if (!prices.ethereum) prices.ethereum = { price: 2100 + Math.random() * 200, change24h: (Math.random()-0.5)*5 };
-  }
-}
-
-// ─────────────────────────────────────────────
-//  COMMODITY PRICES via multiple sources
-// ─────────────────────────────────────────────
-async function fetchCommodityPrices() {
-  // Try metals-api compatible source (free tier)
-  // Fallback to reasonable recent estimates with small randomisation
-  const fallbackGold   = { price: 3020 + (Math.random()-0.5)*40,  change24h: (Math.random()-0.5)*1.5 };
-  const fallbackSilver = { price: 33.5 + (Math.random()-0.5)*1.5, change24h: (Math.random()-0.5)*2   };
-  const fallbackOil    = { price: 71   + (Math.random()-0.5)*3,   change24h: (Math.random()-0.5)*2   };
-
-  // Try fetching gold/silver via a currency-style API (e.g. Frankfurter doesn't have metals)
-  // Use metals.live (free, no key needed for basic)
-  try {
-    const r = await fetch('https://metals.live/api/spot');
-    if (!r.ok) throw new Error();
-    const d = await r.json();
-    // metals.live returns array: [{metal, price}]
-    d.forEach(item => {
-      if (item.gold   && !prices.gold)   prices.gold   = { price: item.gold,   change24h: (Math.random()-0.5)*1 };
-      if (item.silver && !prices.silver) prices.silver = { price: item.silver, change24h: (Math.random()-0.5)*1.5 };
+  <!-- ============================================================
+       JAVASCRIPT
+  ============================================================ -->
+  <script>
+    /* ---- Navbar scroll effect ---- */
+    const navbar = document.getElementById('navbar');
+    window.addEventListener('scroll', () => {
+      navbar.classList.toggle('scrolled', window.scrollY > 60);
     });
-  } catch {}
 
-  // Fallback for any still missing
-  if (!prices.gold)   prices.gold   = fallbackGold;
-  if (!prices.silver) prices.silver = fallbackSilver;
-  if (!prices.oil)    prices.oil    = fallbackOil;
-}
+    /* ---- Hamburger / mobile menu ---- */
+    const hamburger   = document.getElementById('hamburger');
+    const mobileMenu  = document.getElementById('mobileMenu');
+    hamburger.addEventListener('click', () => {
+      hamburger.classList.toggle('open');
+      mobileMenu.classList.toggle('open');
+      document.body.style.overflow = mobileMenu.classList.contains('open') ? 'hidden' : '';
+    });
+    function closeMobile() {
+      hamburger.classList.remove('open');
+      mobileMenu.classList.remove('open');
+      document.body.style.overflow = '';
+    }
 
-// ─────────────────────────────────────────────
-//  CHART HISTORY  (CoinGecko + synthetic)
-// ─────────────────────────────────────────────
-async function fetchChartData(assetId, days) {
-  const asset = ASSETS[assetId];
-  showLoading(true);
-
-  if (asset.type === 'crypto') {
-    try {
-      const r = await fetch(
-        `https://api.coingecko.com/api/v3/coins/${asset.cgId}/market_chart?vs_currency=usd&days=${days}&interval=${days <= 7 ? 'hourly' : 'daily'}`
-      );
-      if (!r.ok) throw new Error();
-      const d = await r.json();
-      const labels = d.prices.map(p => {
-        const dt = new Date(p[0]);
-        return days <= 1 ? dt.toLocaleTimeString('pl-PL', {hour:'2-digit',minute:'2-digit'})
-             : days <= 30 ? dt.toLocaleDateString('pl-PL', {month:'short',day:'numeric'})
-             : dt.toLocaleDateString('pl-PL', {month:'short',day:'numeric'});
+    /* ---- Scroll reveal ---- */
+    const revealEls = document.querySelectorAll('.reveal');
+    const observer  = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
       });
-      const data = d.prices.map(p => p[1]);
-      renderChart(labels, data, assetId);
-      updateStats(data);
-      document.getElementById('stat-source').textContent = 'CoinGecko';
-      showLoading(false);
-      return;
-    } catch(e) {
-      console.warn('Chart fetch failed, generating synthetic', e);
+    }, { threshold: 0.12 });
+    revealEls.forEach(el => observer.observe(el));
+
+    /* ---- Contact form ---- */
+    function handleSubmit(e) {
+      e.preventDefault();
+      document.getElementById('form-success').style.display = 'block';
+      e.target.reset();
     }
-  }
+  </script>
 
-  // SYNTHETIC fallback / commodity chart
-  const base = prices[assetId]?.price || 100;
-  const count = days <= 1 ? 24 : days <= 7 ? days*24 : days;
-  const now = Date.now();
-  const interval = days <= 7 ? 3600000 : 86400000;
-  const synth = generateSyntheticHistory(base, count, 0.02);
-  const labels = synth.map((_, i) => {
-    const dt = new Date(now - (count - i) * interval);
-    return days <= 1 ? dt.toLocaleTimeString('pl-PL', {hour:'2-digit',minute:'2-digit'})
-         : dt.toLocaleDateString('pl-PL', {month:'short',day:'numeric'});
-  });
-  renderChart(labels, synth, assetId);
-  updateStats(synth);
-  document.getElementById('stat-source').textContent = 'Szacunkowe';
-  showLoading(false);
-}
-
-function generateSyntheticHistory(endPrice, n, volatility) {
-  const data = [endPrice];
-  for (let i = 1; i < n; i++) {
-    const prev = data[i-1];
-    const change = prev * volatility * (Math.random() * 2 - 1);
-    data.unshift(prev - change);
-  }
-  return data;
-}
-
-function renderChart(labels, data, assetId) {
-  const color = assetColor(assetId);
-  initChart(labels, data, color);
-}
-
-function updateStats(data) {
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const first = data[0], last = data[data.length-1];
-  const chgPct = ((last - first) / first * 100).toFixed(2);
-  document.getElementById('stat-low').textContent = formatPriceShort(min);
-  document.getElementById('stat-high').textContent = formatPriceShort(max);
-  const el24 = document.getElementById('stat-24h');
-  el24.textContent = (chgPct > 0 ? '+' : '') + chgPct + '%';
-  el24.className = 'stat-value ' + (chgPct >= 0 ? 'up' : 'down');
-}
-
-function showLoading(v) {
-  document.getElementById('chart-loading').style.display = v ? 'flex' : 'none';
-}
-
-// ─────────────────────────────────────────────
-//  UI UPDATES
-// ─────────────────────────────────────────────
-function updateAllCards() {
-  Object.keys(ASSETS).forEach(id => {
-    const p = prices[id];
-    if (!p) return;
-    const el = document.getElementById('card-price-' + id);
-    const chEl = document.getElementById('card-change-' + id);
-    if (el) el.textContent = formatPriceShort(p.price);
-    if (chEl) {
-      const c = p.change24h || 0;
-      chEl.textContent = (c >= 0 ? '+' : '') + c.toFixed(2) + '%';
-      chEl.className = 'asset-change ' + (c >= 0 ? 'up' : 'down');
-    }
-  });
-  updateChartHeader();
-  updateTicker();
-}
-
-function updateChartHeader() {
-  const p = prices[currentAsset];
-  if (!p) return;
-  const asset = ASSETS[currentAsset];
-  document.getElementById('chart-title').textContent = asset.name;
-  document.getElementById('chart-subtitle').textContent = asset.sym + ' / USD';
-  document.getElementById('chart-price').textContent = formatPrice(p.price, 'usd');
-  const ch = document.getElementById('chart-change');
-  const c = p.change24h || 0;
-  ch.textContent = (c >= 0 ? '▲ +' : '▼ ') + c.toFixed(2) + '% (24h)';
-  ch.className = 'chart-big-change ' + (c >= 0 ? 'up' : 'down');
-}
-
-function updateTicker() {
-  const scroll = document.getElementById('ticker-scroll');
-  scroll.innerHTML = Object.entries(ASSETS).map(([id, a]) => {
-    const p = prices[id];
-    if (!p) return '';
-    const c = p.change24h || 0;
-    return `<div class="ticker-item" onclick="selectAsset('${id}')">
-      <span class="sym">${a.sym}</span>
-      <span class="price">${formatPriceShort(p.price)}</span>
-      <span class="chg ${c >= 0 ? 'up' : 'down'}">${c >= 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(2)}%</span>
-    </div>`;
-  }).join('');
-}
-
-// ─────────────────────────────────────────────
-//  ASSET SELECTION
-// ─────────────────────────────────────────────
-function selectAsset(id) {
-  currentAsset = id;
-  document.querySelectorAll('.asset-card').forEach(el => {
-    el.classList.toggle('active', el.dataset.id === id);
-  });
-  // update calc selector
-  document.getElementById('calc-asset').value = id;
-  document.getElementById('calc-unit').textContent = ASSETS[id].sym;
-  updateChartHeader();
-  fetchChartData(id, currentTf);
-}
-
-// ─────────────────────────────────────────────
-//  TIMEFRAME
-// ─────────────────────────────────────────────
-function setTf(days) {
-  currentTf = days;
-  document.querySelectorAll('.tf-btn').forEach((btn, i) => {
-    const map = [1, 7, 30, 90, 365];
-    btn.classList.toggle('active', map[i] === days);
-  });
-  fetchChartData(currentAsset, days);
-}
-
-// ─────────────────────────────────────────────
-//  CALCULATOR
-// ─────────────────────────────────────────────
-document.getElementById('calc-asset').addEventListener('change', function() {
-  const id = this.value;
-  document.getElementById('calc-unit').textContent = ASSETS[id].sym;
-});
-
-function calculate() {
-  const assetId  = document.getElementById('calc-asset').value;
-  const amount   = parseFloat(document.getElementById('calc-amount').value);
-  const currency = document.getElementById('calc-currency').value;
-  const errEl    = document.getElementById('calc-error');
-  errEl.style.display = 'none';
-
-  if (isNaN(amount) || amount < 0) {
-    errEl.textContent = 'Podaj prawidłową ilość.';
-    errEl.style.display = 'block';
-    return;
-  }
-
-  const p = prices[assetId];
-  if (!p) {
-    errEl.textContent = 'Brak danych cenowych. Odśwież stronę.';
-    errEl.style.display = 'block';
-    return;
-  }
-
-  const rate = fxRates[currency] || 1;
-  const usdValue = amount * p.price;
-  const converted = usdValue * rate;
-  const sym = { usd: '$', eur: '€', pln: 'zł' }[currency];
-  const symName = { usd: 'USD', eur: 'EUR', pln: 'PLN' }[currency];
-  const asset = ASSETS[assetId];
-
-  let formatted;
-  if (converted >= 1e6)     formatted = sym + (converted/1e6).toFixed(3) + 'M';
-  else if (converted >= 1e3) formatted = sym + converted.toLocaleString('pl-PL', {maximumFractionDigits:2});
-  else                       formatted = sym + converted.toLocaleString('pl-PL', {minimumFractionDigits:2, maximumFractionDigits:4});
-  if (currency === 'pln')    formatted = converted.toLocaleString('pl-PL', {maximumFractionDigits:2}) + ' zł';
-
-  document.getElementById('result-value').textContent = formatted;
-  document.getElementById('result-sub').textContent =
-    `${amount} ${asset.unit} × ${formatPrice(p.price, 'usd')} = ${usdValue.toLocaleString('pl-PL', {maximumFractionDigits:2})} USD`;
-
-  const rateEl = document.getElementById('result-rate');
-  if (currency !== 'usd') {
-    rateEl.textContent = `Kurs: 1 USD = ${rate.toFixed(4)} ${symName}`;
-  } else {
-    rateEl.textContent = `Kurs ${asset.name}: ${formatPrice(p.price, 'usd')} / ${asset.unit}`;
-  }
-}
-
-// ─────────────────────────────────────────────
-//  MAIN LOAD CYCLE
-// ─────────────────────────────────────────────
-async function loadAll() {
-  await Promise.all([fetchFx(), fetchCryptoPrices(), fetchCommodityPrices()]);
-  updateAllCards();
-  setLastUpdate();
-}
-
-async function init() {
-  await loadAll();
-  fetchChartData(currentAsset, currentTf);
-}
-
-// Auto refresh every 60 seconds
-setInterval(async () => {
-  await loadAll();
-  fetchChartData(currentAsset, currentTf);
-}, 60000);
-
-init();
-</script>
 </body>
 </html>
